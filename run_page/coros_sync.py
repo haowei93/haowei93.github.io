@@ -48,7 +48,11 @@ class Coros:
         async with httpx.AsyncClient(timeout=TIME_OUT) as client:
             response = await client.post(url, json=data, headers=headers)
             resp_json = response.json()
-            access_token = resp_json["data"]["accessToken"]
+            access_token = resp_json.get("data", {}).get("accessToken")
+            if not access_token:
+                raise Exception(
+                    "============login failed! please check your account and password==========="
+                )
             self.headers = {
                 "accesstoken": access_token,
                 "cookie": f"CPL-coros-region=2; CPL-coros-token={access_token}",
@@ -111,17 +115,9 @@ class Coros:
 
         return label_id, fname
 
+
 def get_downloaded_ids(folder):
     return [i.split(".")[0] for i in os.listdir(folder) if not i.startswith(".")]
-
-async def gather_with_concurrency(n, tasks):
-  semaphore = asyncio.Semaphore(n)
-
-  async def sem_task(task):
-    async with semaphore:
-      return await task
-
-  return await asyncio.gather(*(sem_task(task) for task in tasks))
 
 
 async def download_and_generate(account, password):
@@ -139,15 +135,20 @@ async def download_and_generate(account, password):
     start_time = time.time()
     await gather_with_concurrency(
         10,
-        [
-            coros.download_activity(label_d)
-            for label_d in to_generate_coros_ids
-        ],
+        [coros.download_activity(label_d) for label_d in to_generate_coros_ids],
     )
     print(f"Download finished. Elapsed {time.time()-start_time} seconds")
-
-    await coros.req.aclose()
     make_activities_file(SQL_FILE, FIT_FOLDER, JSON_FILE, "fit")
+
+
+async def gather_with_concurrency(n, tasks):
+    semaphore = asyncio.Semaphore(n)
+
+    async def sem_task(task):
+        async with semaphore:
+            return await task
+
+    return await asyncio.gather(*(sem_task(task) for task in tasks))
 
 
 if __name__ == "__main__":
