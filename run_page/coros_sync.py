@@ -129,7 +129,7 @@ async def download_and_generate(account, password):
 
     for label_id in to_generate_coros_ids:
         await coros.download_activity(label_id)
-
+    await coros.req.aclose()
     make_activities_file(SQL_FILE, FIT_FOLDER, JSON_FILE, "fit")
 
 
