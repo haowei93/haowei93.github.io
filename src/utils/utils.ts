@@ -1,6 +1,6 @@
 import * as mapboxPolyline from '@mapbox/polyline';
 import gcoord from 'gcoord';
-import { WebMercatorViewport } from 'viewport-mercator-project';
+import { WebMercatorViewport } from '@math.gl/web-mercator';
 import { chinaGeojson, RPGeometry } from '@/static/run_countries';
 import worldGeoJson from '@surbowl/world-geo-json-zh/world.zh.json';
 import { chinaCities } from '@/static/city';
@@ -435,6 +435,9 @@ const getMapStyle = (vendor: string, styleName: string, token: string) => {
   return style;
 };
 
+const isTouchDevice = () =>
+  'ontouchstart' in window || navigator.maxTouchPoints > 0;
+
 export {
   titleForShow,
   formatPace,
@@ -455,4 +458,5 @@ export {
   formatRunTime,
   convertMovingTime2Sec,
   getMapStyle,
+  isTouchDevice,
 };

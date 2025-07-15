@@ -16,11 +16,10 @@ from io import BytesIO
 from lxml import etree
 
 import aiofiles
-import cloudscraper
 import garth
 import httpx
 from config import FOLDER_DICT, JSON_FILE, SQL_FILE
-from garmin_device_adaptor import wrap_device_info
+from garmin_device_adaptor import process_garmin_data
 from utils import make_activities_file
 
 # logging.basicConfig(level=logging.DEBUG)
@@ -52,7 +51,6 @@ class Garmin:
         Init module
         """
         self.req = httpx.AsyncClient(timeout=TIME_OUT)
-        self.cf_req = cloudscraper.CloudScraper()
         self.URL_DICT = (
             GARMIN_CN_URL_DICT
             if auth_domain and str(auth_domain).upper() == "CN"
@@ -134,16 +132,11 @@ class Garmin:
             use_fake_garmin_device,
         )
         for data in datas:
-            print(data.filename)
             with open(data.filename, "wb") as f:
                 for chunk in data.content:
                     f.write(chunk)
             f = open(data.filename, "rb")
-            # wrap fake garmin device to origin fit file, current not support gpx file
-            if use_fake_garmin_device:
-                file_body = wrap_device_info(f)
-            else:
-                file_body = BytesIO(f.read())
+            file_body = process_garmin_data(f, use_fake_garmin_device)
             files = {"file": (data.filename, file_body)}
 
             try:
