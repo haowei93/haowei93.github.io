@@ -66,7 +66,7 @@ class TrackLoader:
     """
 
     def __init__(self):
-        self.min_length = 100
+        self.min_length = 0 # Lowering this because some imported strength trainings have 0 distance but are valid activities
         self.special_file_names = []
         self.year_range = YearRange()
         self.load_func_dict = {
@@ -119,7 +119,8 @@ class TrackLoader:
         filtered_tracks = []
         for t in tracks:
             file_name = t.file_names[0]
-            if int(t.length) == 0:
+            # Be more permissive with length
+            if int(t.length) == 0 and not (t.moving_dict and t.moving_dict.get('elapsed_time')):
                 log.info(f"{file_name}: skipping empty track")
             elif not t.start_time_local:
                 log.info(f"{file_name}: skipping track without start time")

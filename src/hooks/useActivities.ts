@@ -1,44 +1,108 @@
-import { useMemo } from 'react';
-import { locationForRun, titleForRun } from '@/utils/utils';
-import activities from '@/static/activities.json';
+import { useEffect, useMemo, useState } from 'react';
+import { useParams } from 'react-router-dom';
+import { Activity, locationForRun, titleForRun } from '@/utils/utils';
+import { COUNTRY_STANDARDIZATION } from '@/static/city';
 
-// standardize country names for consistency between mapbox and activities data
 const standardizeCountryName = (country: string): string => {
-  if (country.includes('美利坚合众国')) {
-    return '美国';
+  for (const [pattern, standardName] of COUNTRY_STANDARDIZATION) {
+    if (country.includes(pattern)) {
+      return standardName;
+    }
   }
-  if (country.includes('英国')) {
-    return '英国';
-  }
-  if (country.includes('印度尼西亚')) {
-    return '印度尼西亚';
-  }
-  if (country.includes('韩国')) {
-    return '韩国';
-  }
-  if (country.includes('斯里兰卡')) {
-    return '斯里兰卡';
-  }
-  if (country.includes('所罗门群岛')) {
-    return '所罗门群岛';
-  }
-  if (country.includes('拉脱维亚')) {
-    return '拉脱维亚';
-  }
-  if (country.includes('爱沙尼亚')) {
-    return '爱沙尼亚';
-  }
-  if (country.includes('奧地利')) {
-    return '奥地利';
-  }
-  if (country.includes('澳大利亚')) {
-    return '澳大利亚';
-  } else {
-    return country;
-  }
+  return country;
 };
 
 const useActivities = () => {
+  const { id } = useParams();
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const searchParams = new URLSearchParams(window.location.search);
+  const queryUser = searchParams.get('user');
+  
+  // Priority: Query Param > Route Param > Default Env
+  const userId = queryUser ?? id ?? (import.meta.env.VITE_DEFAULT_USER_ID as string | undefined);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchActivities = async () => {
+      if (!userId) {
+        if (isMounted) {
+          // If no user, maybe try to load a default global activities.json if it exists?
+          // Or just show error.
+          // For backward compatibility with single-user mode:
+          // Try loading `activities.json` from root if no user is specified?
+          // But existing logic sets Error.
+          
+          // Let's try to load root activities.json if userId is missing, assuming single user mode fallback.
+           try {
+              const response = await fetch(`${import.meta.env.BASE_URL ?? '/'}activities.json`);
+              if (response.ok) {
+                 const data = await response.json();
+                 if (isMounted) setActivities(data);
+                 setLoading(false);
+                 return;
+              }
+           } catch (e) {}
+           
+          setError('Missing user id. Use ?user=Name or /users/Name.');
+          setLoading(false);
+        }
+        return;
+      }
+
+      setLoading(true);
+      setError(null);
+
+      const baseUrl = import.meta.env.BASE_URL ?? '/';
+      const basePath = baseUrl === '/' ? '' : baseUrl.replace(/\/$/, '');
+      
+      // Support my new script output location: /data/{userId}/activities.json
+      // AND potential legacy location /users/{userId}/activities.json
+      
+      const urlsToTry = [
+          `${basePath}/data/${userId}/activities.json`,
+          `${basePath}/users/${userId}/activities.json`
+      ];
+
+      try {
+        let response;
+        for (const url of urlsToTry) {
+            try {
+                response = await fetch(url, { cache: 'no-cache' });
+                if (response.ok) break;
+            } catch (e) {}
+        }
+
+        if (!response || !response.ok) {
+          throw new Error(`Failed to load activities for user ${userId}.`);
+        }
+        const data = await response.json();
+        if (!Array.isArray(data)) {
+          throw new Error('Invalid activities payload.');
+        }
+        if (isMounted) {
+          setActivities(data);
+        }
+      } catch (err) {
+        if (isMounted) {
+          setError(err instanceof Error ? err.message : 'Unknown error.');
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchActivities();
+    return () => {
+      isMounted = false;
+    };
+  }, [userId]);
+
   const processedData = useMemo(() => {
     const cities: Record<string, number> = {};
     const runPeriod: Record<string, number> = {};
@@ -81,9 +145,9 @@ const useActivities = () => {
       runPeriod,
       thisYear,
     };
-  }, []); // Empty dependency array since activities is static
+  }, [activities]);
 
-  return processedData;
+  return { ...processedData, loading, error, userId };
 };
 
 export default useActivities;

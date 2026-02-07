@@ -10,7 +10,7 @@ import YearsStat from '@/components/YearsStat';
 import useActivities from '@/hooks/useActivities';
 import useSiteMetadata from '@/hooks/useSiteMetadata';
 import { useInterval } from '@/hooks/useInterval';
-import { IS_CHINESE } from '@/utils/const';
+import { IS_CHINESE, LOADING_TEXT } from '@/utils/const';
 import {
   Activity,
   IViewState,
@@ -29,7 +29,7 @@ import { useTheme, useThemeChangeCounter } from '@/hooks/useTheme';
 
 const Index = () => {
   const { siteTitle, siteUrl } = useSiteMetadata();
-  const { activities, thisYear } = useActivities();
+  const { activities, thisYear, loading, error, userId } = useActivities();
   const themeChangeCounter = useThemeChangeCounter();
   const [year, setYear] = useState(thisYear);
   const [runIndex, setRunIndex] = useState(-1);
@@ -43,6 +43,8 @@ const Index = () => {
     func: (_run: Activity, _value: string) => boolean;
   }>({ item: thisYear, func: filterYearRuns });
 
+  const { theme } = useTheme();
+
   // State to track if we're showing a single run from URL hash
   const [singleRunId, setSingleRunId] = useState<number | null>(null);
 
@@ -51,6 +53,14 @@ const Index = () => {
 
   const selectedRunIdRef = useRef<number | null>(null);
   const selectedRunDateRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    // If activities loaded and year is not set correctly (e.g. empty default), sync it.
+    if (thisYear && year !== thisYear) {
+       setYear(thisYear);
+       setCurrentFilter({ item: thisYear, func: filterYearRuns });
+    }
+  }, [thisYear]);
 
   // Parse URL hash on mount to check for run ID
   useEffect(() => {
@@ -386,7 +396,68 @@ const Index = () => {
     };
   }, [year]);
 
-  const { theme } = useTheme();
+  // Conditional rendering must happen AFTER all hooks
+  if (!userId && !loading && !error) {
+     return (
+        <Layout>
+           <Helmet>
+             <html lang="en" data-theme={theme} />
+           </Helmet>
+           <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4">
+              <h1 className="text-4xl font-extrabold italic mb-8 text-yellow-500">多人跑步主页</h1>
+              <p className="mb-8 text-xl">为每位 Coros 用户生成独立主页，路径为 <code>/users/&lt;id&gt;</code>。</p>
+              
+              <div className="border border-gray-700 p-8 rounded-lg max-w-md w-full bg-gray-900/50">
+                 <h2 className="text-2xl font-bold mb-4 text-left">已有主页？</h2>
+                 <p className="mb-4 text-sm text-gray-400 text-left">请输入你的用户 ID 直接访问。</p>
+                 <form 
+                   className="flex gap-2"
+                   onSubmit={(e) => {
+                     e.preventDefault();
+                     const formData = new FormData(e.currentTarget);
+                     const user = formData.get('user') as string;
+                     if (user) {
+                        window.location.href = `/?user=${user}`;
+                     }
+                   }}
+                 >
+                    <input 
+                      name="user" 
+                      type="text" 
+                      placeholder="例如 QiaoGe" 
+                      className="flex-1 bg-gray-800 border border-gray-600 rounded px-4 py-2 text-white focus:border-yellow-500 outline-none"
+                    />
+                    <button type="submit" className="bg-yellow-500 text-black font-bold px-6 py-2 rounded hover:bg-yellow-400 transition">
+                       进入主页
+                    </button>
+                 </form>
+              </div>
+           </div>
+        </Layout>
+     );
+  }
+
+  if (loading) {
+    return (
+      <Layout>
+        <Helmet>
+          <html lang="en" data-theme={theme} />
+        </Helmet>
+        <div>{LOADING_TEXT}</div>
+      </Layout>
+    );
+  }
+
+  if (error) {
+    return (
+      <Layout>
+        <Helmet>
+          <html lang="en" data-theme={theme} />
+        </Helmet>
+        <div>{error}</div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>

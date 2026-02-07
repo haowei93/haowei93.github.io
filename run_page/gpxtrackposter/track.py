@@ -107,14 +107,28 @@ class Track:
                 )
                 os.remove(file_name)
                 return
-            if (
-                messages.get("session_mesgs") is None
-                or messages.get("session_mesgs")[0].get("total_distance") is None
-            ):
-                print(
-                    f"Session message or total distance is missing when loading FIT. for file {self.file_names[0]}, we just ignore this file and continue"
-                )
-                return
+            # Check if total_distance exists
+            session_mesg = messages.get("session_mesgs")[0]
+            total_distance = session_mesg.get("total_distance")
+            if total_distance is None:
+                # Fallback: try to calculate from records or just set to 0 if we really want to load it
+                # For running tracks, distance is crucial.
+                # However, if it's 0.0, it's fine. If it's None, it's missing.
+                # Let's see if we can get it from the last record?
+                records = messages.get("record_mesgs", [])
+                if records and "distance" in records[-1]:
+                     total_distance = records[-1]["distance"]
+                     messages["session_mesgs"][0]["total_distance"] = total_distance
+                else:
+                    # Treat missing distance as 0.0 for indoor/strength activities instead of ignoring
+                    # print(
+                    #     f"Session message or total distance is missing when loading FIT. for file {self.file_names[0]}, setting to 0.0"
+                    # )
+                    messages["session_mesgs"][0]["total_distance"] = 0.0
+            
+            # DEBUG
+            # print(f"File {self.file_names[0]} loaded with distance: {messages['session_mesgs'][0]['total_distance']}")
+
             self._load_fit_data(messages)
         except Exception as e:
             print(
@@ -378,11 +392,28 @@ class Track:
         self.average_heartrate = (
             message["avg_heart_rate"] if "avg_heart_rate" in message else None
         )
-        if message["sport"].lower() == "running":
+        
+        # --- Type Handling Start ---
+        # Treat almost everything as a Run if we can, to ensure it shows up in your run map.
+        # But we preserve the subtype for detail.
+        sport = message["sport"].lower()
+        sub_sport = message["sub_sport"] if "sub_sport" in message else None
+        self.subtype = sub_sport
+
+        if sport == "running":
             self.type = "Run"
+        elif sport == "training" and sub_sport == "strength_training":
+            # Map Strength Training to Run but with 0 distance? Or keep as Run?
+            # To make it show up in the calendar/list, we set type="Run".
+            # If distance is 0, it won't draw a line, but will be a dot or entry.
+            self.type = "Run" 
+        elif sport == "hiking":
+             self.type = "Run" # Treat hiking as run for now to unify display
         else:
-            self.type = message["sport"].lower()
-        self.subtype = message["sub_sport"] if "sub_sport" in message else None
+            # Fallback: force everything to Run so it gets imported, 
+            # unless it's explicitly something we want to exclude later.
+            self.type = "Run"
+        # --- Type Handling End ---
 
         self.elevation_gain = (
             message["total_ascent"] if "total_ascent" in message else None
@@ -400,9 +431,9 @@ class Track:
             seconds=message["total_elapsed_time"]
         )
         self.moving_dict["average_speed"] = (
-            message["enhanced_avg_speed"]
-            if message["enhanced_avg_speed"]
-            else message["avg_speed"]
+            message.get("enhanced_avg_speed")
+            if message.get("enhanced_avg_speed")
+            else message.get("avg_speed", 0)
         )
         for record in fit["record_mesgs"]:
             if "position_lat" in record and "position_long" in record:

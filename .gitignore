@@ -26,3 +26,12 @@ route.png
 route.svg
 
 .env
+.vercel
+
+# Local data & Large files
+.vibe/
+FIT_OUT/
+public/data/
+users.yaml
+data.db
+.env.local

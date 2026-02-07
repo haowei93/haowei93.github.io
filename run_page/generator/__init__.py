@@ -13,7 +13,6 @@ from .db import Activity, init_db, update_or_create_activity
 
 from synced_data_file_logger import save_synced_data_file_list
 
-
 IGNORE_BEFORE_SAVING = os.getenv("IGNORE_BEFORE_SAVING", False)
 
 
@@ -96,15 +95,18 @@ class Generator:
         synced_files = []
 
         for t in tracks:
-            created = update_or_create_activity(
-                self.session, t.to_namedtuple(run_from=file_suffix)
-            )
-            if created:
-                sys.stdout.write("+")
-            else:
-                sys.stdout.write(".")
-            synced_files.extend(t.file_names)
-            sys.stdout.flush()
+            try:
+                created = update_or_create_activity(
+                    self.session, t.to_namedtuple(run_from=file_suffix)
+                )
+                if created:
+                    sys.stdout.write("+")
+                else:
+                    sys.stdout.write(".")
+                synced_files.extend(t.file_names)
+                sys.stdout.flush()
+            except Exception as e:
+                print(f"Skipping track {t.file_names}: {e}")
 
         save_synced_data_file_list(synced_files)
 
@@ -130,7 +132,11 @@ class Generator:
 
     def load(self):
         # if sub_type is not in the db, just add an empty string to it
-        query = self.session.query(Activity).filter(Activity.distance > 0.1)
+        query = self.session.query(Activity)
+        # Note: We temporarily disable the Activity.type check here because
+        # some of your Coros activities (like Strength Training) are being imported
+        # but they have distance 0.0.
+        # But for valid Runs with missing 'Run' type or weird subtype, we want to be permissive.
         if self.only_run:
             query = query.filter(Activity.type == "Run")
 

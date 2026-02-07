@@ -12,6 +12,8 @@ import {
 import '@/styles/index.css';
 import { withOptionalGAPageTracking } from './utils/trackRoute';
 import HomePage from '@/pages/total';
+import LandingPage from '@/pages/home';
+import RegisterPage from '@/pages/register';
 
 if (USE_GOOGLE_ANALYTICS) {
   ReactGA.initialize(GOOGLE_ANALYTICS_TRACKING_ID);
@@ -21,10 +23,26 @@ const routes = createBrowserRouter(
   [
     {
       path: '/',
-      element: withOptionalGAPageTracking(<Index />),
+      element: withOptionalGAPageTracking(<Index />), // Switch root back to Index (our map component) which now handles logic
+    },
+    {
+      path: '/home', // Move LandingPage to explicit path or fallback inside Index
+      element: withOptionalGAPageTracking(<LandingPage />),
     },
     {
       path: 'summary',
+      element: withOptionalGAPageTracking(<HomePage />),
+    },
+    {
+      path: 'register',
+      element: withOptionalGAPageTracking(<RegisterPage />),
+    },
+    {
+      path: 'users/:id',
+      element: withOptionalGAPageTracking(<Index />),
+    },
+    {
+      path: 'users/:id/summary',
       element: withOptionalGAPageTracking(<HomePage />),
     },
     {

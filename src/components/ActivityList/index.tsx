@@ -18,14 +18,15 @@ import {
 } from 'recharts';
 import VirtualList from 'rc-virtual-list';
 import { useNavigate } from 'react-router-dom';
-import activities from '@/static/activities.json';
 import styles from './style.module.css';
 import { ACTIVITY_TOTAL, LOADING_TEXT } from '@/utils/const';
 import { totalStat, yearSummaryStats } from '@assets/index';
 import { loadSvgComponent } from '@/utils/svgUtils';
 import { SHOW_ELEVATION_GAIN, HOME_PAGE_TITLE } from '@/utils/const';
+import { DIST_UNIT, M_TO_DIST } from '@/utils/utils';
 import RoutePreview from '@/components/RoutePreview';
 import { Activity } from '@/utils/utils';
+import useActivities from '@/hooks/useActivities';
 // Layout constants (avoid magic numbers)
 const ITEM_WIDTH = 280;
 const ITEM_GAP = 20;
@@ -156,12 +157,12 @@ const ActivityCardInner: React.FC<ActivityCardProps> = ({
   };
 
   const formatPace = (speed: number): string => {
-    if (speed === 0) return '0:00 min/km';
-    const pace = 60 / speed; // min/km
-    const totalSeconds = Math.round(pace * 60); // Total seconds per km
+    if (speed === 0) return `0:00 min/${DIST_UNIT}`;
+    const pace = 60 / speed; // min/DIST_UNIT
+    const totalSeconds = Math.round(pace * 60); // Total seconds per DIST_UNIT
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
-    return `${minutes}:${seconds < 10 ? '0' : ''}${seconds} min/km`;
+    return `${minutes}:${seconds < 10 ? '0' : ''}${seconds} min/${DIST_UNIT}`;
   };
 
   // Calculate Y-axis maximum value and ticks
@@ -189,7 +190,7 @@ const ActivityCardInner: React.FC<ActivityCardProps> = ({
           <div className={styles.activityDetails}>
             <p>
               <strong>{ACTIVITY_TOTAL.TOTAL_DISTANCE_TITLE}:</strong>{' '}
-              {summary.totalDistance.toFixed(2)} km
+              {summary.totalDistance.toFixed(2)} {DIST_UNIT}
             </p>
             {SHOW_ELEVATION_GAIN &&
               summary.totalElevationGain !== undefined && (
@@ -220,7 +221,7 @@ const ActivityCardInner: React.FC<ActivityCardProps> = ({
                 </p>
                 <p>
                   <strong>{ACTIVITY_TOTAL.MAX_DISTANCE_TITLE}:</strong>{' '}
-                  {summary.maxDistance.toFixed(2)} km
+                  {summary.maxDistance.toFixed(2)} {DIST_UNIT}
                 </p>
                 <p>
                   <strong>{ACTIVITY_TOTAL.MAX_SPEED_TITLE}:</strong>{' '}
@@ -228,7 +229,8 @@ const ActivityCardInner: React.FC<ActivityCardProps> = ({
                 </p>
                 <p>
                   <strong>{ACTIVITY_TOTAL.AVERAGE_DISTANCE_TITLE}:</strong>{' '}
-                  {(summary.totalDistance / summary.count).toFixed(2)} km
+                  {(summary.totalDistance / summary.count).toFixed(2)}{' '}
+                  {DIST_UNIT}
                 </p>
               </>
             )}
@@ -249,7 +251,7 @@ const ActivityCardInner: React.FC<ActivityCardProps> = ({
                     />
                     <YAxis
                       label={{
-                        value: 'km',
+                        value: DIST_UNIT,
                         angle: -90,
                         position: 'insideLeft',
                         fill: 'var(--color-run-table-thead)',
@@ -259,7 +261,7 @@ const ActivityCardInner: React.FC<ActivityCardProps> = ({
                       tick={{ fill: 'var(--color-run-table-thead)' }}
                     />
                     <Tooltip
-                      formatter={(value) => `${value} km`}
+                      formatter={(value) => `${value} ${DIST_UNIT}`}
                       contentStyle={{
                         backgroundColor:
                           'var(--color-run-row-hover-background)',
@@ -326,10 +328,19 @@ const activityCardAreEqual = (
 const ActivityCard = React.memo(ActivityCardInner, activityCardAreEqual);
 
 const ActivityList: React.FC = () => {
+  const { activities, loading, error, userId } = useActivities();
   const [interval, setInterval] = useState<IntervalType>('month');
   const [sportType, setSportType] = useState<string>('all');
   const [sportTypeOptions, setSportTypeOptions] = useState<string[]>([]);
   const [selectedYear, setSelectedYear] = useState<string | null>(null);
+
+  if (loading) {
+    return <div className="p-4">{LOADING_TEXT}</div>;
+  }
+
+  if (error) {
+    return <div className="p-4">{error}</div>;
+  }
 
   // Get available years from activities
   const availableYears = useMemo(() => {
@@ -339,7 +350,7 @@ const ActivityList: React.FC = () => {
       years.add(year);
     });
     return Array.from(years).sort((a, b) => Number(b) - Number(a));
-  }, []);
+  }, [activities]);
 
   // Keyboard navigation for year selection in Life view
   useEffect(() => {
@@ -404,7 +415,7 @@ const ActivityList: React.FC = () => {
     const uniqueSportTypes = [...sportTypeSet];
     uniqueSportTypes.unshift('all');
     setSportTypeOptions(uniqueSportTypes);
-  }, []);
+  }, [activities]);
 
   // 添加useEffect监听interval变化
   useEffect(() => {
@@ -416,7 +427,8 @@ const ActivityList: React.FC = () => {
   const navigate = useNavigate();
 
   const handleHomeClick = () => {
-    navigate('/');
+    const target = userId ? `/users/${userId}` : '/';
+    navigate(target);
   };
 
   function toggleInterval(newInterval: IntervalType): void {
@@ -493,12 +505,11 @@ const ActivityList: React.FC = () => {
             activities: [],
           };
 
-        const distanceKm = activity.distance / 1000;
+        const distance = activity.distance / M_TO_DIST;
         const timeInSeconds = convertTimeToSeconds(activity.moving_time);
-        const speedKmh =
-          timeInSeconds > 0 ? distanceKm / (timeInSeconds / 3600) : 0;
+        const speed = timeInSeconds > 0 ? distance / (timeInSeconds / 3600) : 0;
 
-        acc[key].totalDistance += distanceKm;
+        acc[key].totalDistance += distance;
         acc[key].totalTime += timeInSeconds;
 
         if (SHOW_ELEVATION_GAIN && activity.elevation_gain)
@@ -512,10 +523,9 @@ const ActivityList: React.FC = () => {
         acc[key].count += 1;
         if (intervalArg === 'day') acc[key].activities.push(activity);
         acc[key].dailyDistances[index] =
-          (acc[key].dailyDistances[index] || 0) + distanceKm;
-        if (distanceKm > acc[key].maxDistance)
-          acc[key].maxDistance = distanceKm;
-        if (speedKmh > acc[key].maxSpeed) acc[key].maxSpeed = speedKmh;
+          (acc[key].dailyDistances[index] || 0) + distance;
+        if (distance > acc[key].maxDistance) acc[key].maxDistance = distance;
+        if (speed > acc[key].maxSpeed) acc[key].maxSpeed = speed;
         if (intervalArg === 'day')
           acc[key].location = activity.location_country || '';
 
@@ -691,7 +701,7 @@ const ActivityList: React.FC = () => {
       ? '100%'
       : `${itemsPerRow * itemWidth + Math.max(0, itemsPerRow - 1) * gap}px`;
 
-  const loading = itemsPerRow < 1 || !rowHeight;
+  const listLoading = itemsPerRow < 1 || !rowHeight;
 
   return (
     <div className={styles.activityList}>
@@ -814,7 +824,7 @@ const ActivityList: React.FC = () => {
           </div>
           <div className={styles.summaryInner}>
             <div style={{ width: rowWidth }}>
-              {loading ? (
+              {listLoading ? (
                 // Use full viewport height (or viewport minus filter height if available) to avoid flicker
                 <div
                   style={{

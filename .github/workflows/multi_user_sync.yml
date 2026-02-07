@@ -1,0 +1,56 @@
+name: Multi-User Sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      user_id:
+        description: 'Optional user id to sync'
+        required: false
+        type: string
+  schedule:
+    - cron: '0 1 * * *'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: 'requirements.txt'
+
+      - name: Install Python dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Sync users
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          USER_PASSWORD_SECRET: ${{ secrets.USER_PASSWORD_SECRET }}
+          USER_ID: ${{ inputs.user_id }}
+          FILE_TYPE: fit
+          ONLY_RUN: 'false'
+        run: |
+          node scripts/generate_all.mjs
+
+      - name: Commit updates
+        run: |
+          git config --local user.email 'action@github.com'
+          git config --local user.name 'GitHub Action'
+          git add public/users data/users
+          git commit -m 'sync users' || echo 'nothing to commit'
+          git push || echo 'nothing to push'

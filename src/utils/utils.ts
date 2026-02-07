@@ -31,6 +31,13 @@ export type Coordinate = [number, number];
 
 export type RunIds = Array<number> | [];
 
+// Check for units environment variable
+const IS_IMPERIAL = import.meta.env.VITE_USE_IMPERIAL === 'true';
+export const M_TO_DIST = IS_IMPERIAL ? 1609.344 : 1000; // Meters to Mi or Km
+export const M_TO_ELEV = IS_IMPERIAL ? 3.28084 : 1; // Meters to Feet or Meters
+export const DIST_UNIT = IS_IMPERIAL ? 'mi' : 'km'; // Label
+export const ELEV_UNIT = IS_IMPERIAL ? 'ft' : 'm'; // Label
+
 export interface Activity {
   run_id: number;
   name: string;
@@ -50,7 +57,7 @@ export interface Activity {
 
 const titleForShow = (run: Activity): string => {
   const date = run.start_date_local.slice(0, 11);
-  const distance = (run.distance / 1000.0).toFixed(2);
+  const distance = (run.distance / M_TO_DIST).toFixed(2);
   let name = 'Run';
   if (run.name.slice(0, 7) === 'Running') {
     name = 'run';
@@ -58,14 +65,14 @@ const titleForShow = (run: Activity): string => {
   if (run.name) {
     name = run.name;
   }
-  return `${name} ${date} ${distance} KM ${
+  return `${name} ${date} ${distance} ${DIST_UNIT} ${
     !run.summary_polyline ? '(No map data for this run)' : ''
   }`;
 };
 
 const formatPace = (d: number): string => {
   if (Number.isNaN(d)) return '0';
-  const pace = (1000.0 / 60.0) * (1.0 / d);
+  const pace = (M_TO_DIST / 60.0) * (1.0 / d);
   const minutes = Math.floor(pace);
   const seconds = Math.floor((pace - minutes) * 60.0);
   return `${minutes}'${seconds.toFixed(0).toString().padStart(2, '0')}"`;
@@ -234,24 +241,37 @@ const pathForRun = (run: Activity): Coordinate[] => {
 const colorForRun = (run: Activity): string => {
   const dynamicRunColor = getRuntimeRunColor();
 
-  switch (run.type) {
-    case 'Run': {
-      if (run.subtype === 'trail') {
-        return RUN_TRAIL_COLOR;
-      } else if (run.subtype === 'generic') {
-        return dynamicRunColor;
-      }
+  const type = run.type.toLowerCase();
+  
+  if (type === 'run') {
+    if (run.subtype === 'trail') {
+      return RUN_TRAIL_COLOR;
+    } else if (run.subtype === 'generic') {
       return dynamicRunColor;
     }
+    return dynamicRunColor;
+  }
+  
+  // Mapping for known types
+  switch (type) {
     case 'cycling':
+    case 'ride':
+    case 'virtualride':
       return CYCLING_COLOR;
     case 'hiking':
+    case 'hike':
       return HIKING_COLOR;
     case 'walking':
+    case 'walk':
       return WALKING_COLOR;
     case 'swimming':
+    case 'swim':
       return SWIMMING_COLOR;
+    case 'training': // Add training for Strength Training
+      return MAIN_COLOR;
     default:
+      // Fallback: If it's something else (like Strength Training which we might have forced to show)
+      // We can give it a specific color or just use MAIN_COLOR
       return MAIN_COLOR;
   }
 };

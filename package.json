@@ -39,6 +39,7 @@
     "develop": "vite dev",
     "dev": "vite dev",
     "serve": "vite serve",
+    "sync:users": "node scripts/generate_all.mjs",
     "lint": "eslint src --ext .ts,.tsx --fix",
     "check": "prettier --check \"src/main.tsx\" \"src/**/*.{css,module.css,json,ts,tsx}\" \"*.{yaml,json,ts}\"",
     "format": "prettier --write \"src/main.tsx\" \"src/**/*.{css,module.css,json,ts,tsx}\" \"*.{yaml,json,ts}\"",

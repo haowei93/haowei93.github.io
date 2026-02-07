@@ -32,6 +32,7 @@ class Coros:
         self.password = password
         self.headers = None
         self.req = None
+        self.is_only_running = is_only_running
 
     async def login(self):
         url = COROS_URL_DICT.get("LOGIN_URL")
@@ -64,7 +65,23 @@ class Coros:
                 "accesstoken": access_token,
                 "cookie": f"CPL-coros-region=2; CPL-coros-token={access_token}",
             }
-            self.is_only_running = is_only_running
+            # self.is_only_running = is_only_running  <-- This was causing the issue if passed in init but not set as instance var before login or relying on local var
+            # Actually, the error `name 'is_only_running' is not defined` came from `coros.init()` calling `coros.login()`, 
+            # and `login()` trying to use `is_only_running` which wasn't passed to it, or was trying to be set on `self` from a non-existent local variable.
+            # In the original code: `self.is_only_running = is_only_running` inside `login` uses a variable `is_only_running` that is NOT an argument to `login`.
+            # It seems the original code expected `is_only_running` to be in `login` scope, but it wasn't.
+            # BUT, wait. In the ORIGINAL file I read:
+            # class Coros:
+            #     def __init__(self, account, password, is_only_running=False): ...
+            #     async def login(self): ...
+            #         ...
+            #         self.is_only_running = is_only_running  <-- This line existed in `login` method in the file content I read earlier?
+            # Let's check the file content again carefully.
+            # Ah, looking at the previous `read` output:
+            # `self.is_only_running = is_only_running` is indeed inside `login`.
+            # But `is_only_running` is NOT defined in `login`. It was passed to `__init__` but not saved to `self` there.
+            # So `login` fails.
+            
             self.req = httpx.AsyncClient(timeout=TIME_OUT, headers=self.headers)
         await client.aclose()
 

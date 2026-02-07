@@ -4,5 +4,12 @@
       "gh-pages": false
     }
   },
-  "rewrites": [{ "source": "/(.*)", "destination": "/" }]
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/$1" },
+    { "source": "/@vite/(.*)", "destination": "/@vite/$1" },
+    { "source": "/@react-refresh", "destination": "/@react-refresh" },
+    { "source": "/src/(.*)", "destination": "/src/$1" },
+    { "source": "/assets/(.*)", "destination": "/assets/$1" },
+    { "source": "/(.*)", "destination": "/" }
+  ]
 }
