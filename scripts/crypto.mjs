@@ -27,3 +27,57 @@ export const encryptSecret = (value, secret) => {
   const tag = cipher.getAuthTag();
   return [iv.toString('base64'), tag.toString('base64'), encrypted.toString('base64')].join('.');
 };
+
+import fs from 'node:fs';
+import path from 'node:path';
+
+const main = () => {
+  const args = process.argv.slice(2);
+  const command = args[0];
+  
+  // Use a fixed key file or env var, or a default for dev if not present (NOT RECOMMENDED for prod)
+  // Ideally read from .env.local or expect env var
+  const secret = process.env.TRANS_AES_SECRET;
+
+  if (!secret) {
+     if (command === 'keygen') {
+        const key = crypto.randomBytes(32).toString('hex');
+        console.log("Generated Key:", key);
+        console.log("\nAdd this to your .env.local and GitHub Secrets (TRANS_AES_SECRET)");
+        return;
+     }
+     console.error("Error: TRANS_AES_SECRET environment variable is not set.");
+     process.exit(1);
+  }
+
+  if (command === 'encrypt') {
+    const inputPath = args[1] || 'users.yaml';
+    const outputPath = args[2] || 'users.enc';
+    
+    try {
+        const content = fs.readFileSync(inputPath, 'utf8');
+        const encrypted = encryptSecret(content, secret);
+        fs.writeFileSync(outputPath, encrypted, 'utf8');
+        console.log(`Encrypted ${inputPath} to ${outputPath}`);
+    } catch (e) {
+        console.error("Encryption failed:", e.message);
+        process.exit(1);
+    }
+  } else if (command === 'decrypt') {
+    const inputPath = args[1] || 'users.enc';
+    
+    try {
+        const content = fs.readFileSync(inputPath, 'utf8');
+        const decrypted = decryptSecret(content, secret);
+        console.log(decrypted);
+    } catch (e) {
+        console.error("Decryption failed:", e.message);
+        process.exit(1);
+    }
+  }
+};
+
+// Check if running directly
+if (process.argv[1] === import.meta.filename || process.argv[1].endsWith('crypto.mjs')) {
+    main();
+}
