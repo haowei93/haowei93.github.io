@@ -1,4 +1,4 @@
-name: Multi-User Sync
+name: Multi-User Sync & Deploy
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ on:
         required: false
         type: string
   schedule:
-    - cron: '0 1 * * *'
+    - cron: '0 0,12 * * *' # Run twice a day (UTC)
   push:
     branches:
       - refactor/cleanup-and-users
@@ -20,16 +20,27 @@ on:
       - 'run_page/**'
       - '.github/workflows/multi_user_sync.yml'
 
+# Allow one concurrent deployment
+concurrency:
+  group: 'pages'
+  cancel-in-progress: true
+
 jobs:
-  sync:
+  sync_and_deploy:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+      
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          # Use a token if you need to trigger subsequent workflows or push to protected branches
-          # token: ${{ secrets.GITHUB_TOKEN }} # default is fine for simple push if permissions allow
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -43,9 +54,15 @@ jobs:
           cache: pip
           cache-dependency-path: 'requirements.txt'
 
+      - name: Enable corepack
+        run: npm install -g corepack@latest && corepack enable pnpm
+
       - name: Install Python dependencies
         run: |
           pip install -r requirements.txt
+
+      - name: Install Node dependencies
+        run: pnpm install
 
       - name: Decrypt users.yaml
         env:
@@ -59,28 +76,20 @@ jobs:
 
       - name: Sync users data
         env:
-          # If your script needs other secrets (e.g. for Strava/Garmin if used instead of Coros)
-          # For Coros via users.yaml, we just need the yaml file.
-          # Passing TRANS_AES_SECRET just in case script needs it, though decryption happened above.
           TRANS_AES_SECRET: ${{ secrets.TRANS_AES_SECRET }}
         run: |
-          # Ensure public/data exists
           mkdir -p public/data
-          
-          # Run the sync script
-          # Note: ensure requirements.txt includes aiofiles, httpx, pyyaml, etc.
           python3 run_page/multi_user_sync.py --config users.yaml --fit
 
       - name: Commit data updates
+        continue-on-error: true
         run: |
           git config --local user.email 'action@github.com'
           git config --local user.name 'GitHub Action'
           
-          # Add the generated data files
-          # Force add because they might be ignored by .gitignore in some setups
+          # Force add data files
           git add -f public/data/
           
-          # Only commit if there are changes
           if [ -n "$(git status --porcelain)" ]; then
             git commit -m "chore: sync multi-user data [skip ci]"
             git push origin HEAD:${{ github.ref }}
@@ -88,34 +97,26 @@ jobs:
             echo "No changes to commit."
           fi
 
+      - name: Build Site
+        env:
+          REPO_NAME: ${{ github.event.repository.name }}
+        run: |
+          # The local public/data folder now contains the fresh data from the sync step
+          PATH_PREFIX=/$REPO_NAME pnpm build
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          name: pages-artifact
+          path: './dist'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+        with:
+          artifact_name: pages-artifact
+
       - name: Clean up sensitive files
         if: always()
         run: |
           rm -f users.yaml
-
-  # After sync, trigger the build/deploy workflow
-  # We can't use `needs` directly if the deploy workflow is separate.
-  # But we can call the deploy workflow if it's reusable, or just let the push above trigger it if configured.
-  # Since we pushed to the branch, if gh-pages.yml is configured to run on push to this branch, it will trigger.
-  # BUT: pushes from GITHUB_TOKEN often don't trigger other workflows.
-  # WORKAROUND: Use a Personal Access Token (PAT) for the push, or just inline the build step here.
-  # Let's inline the build and deploy steps for simplicity in this branch testing phase.
-  
-  build_and_deploy:
-    needs: sync
-    # Only deploy if sync succeeded. 
-    # Actually, we might want to deploy even if sync didn't change anything, 
-    # but usually we rely on the commit triggering a separate workflow or we do it here.
-    # Since we can't easily trigger the other workflow without a PAT, let's include deployment here.
-    
-    # Wait. gh-pages.yml handles deployment. 
-    # If we want to test deployment from this branch, we should ensure gh-pages.yml listens to it.
-    # We already modified gh-pages.yml? Let's check.
-    # The user's gh-pages.yml uses `workflow_call` and `workflow_dispatch`. It DOES NOT listen to push!
-    # So we need to call it or duplicate logic.
-    
-    uses: ./.github/workflows/gh-pages.yml
-    with:
-      save_data_in_github_cache: false
-      data_cache_prefix: 'track_data'
-    secrets: inherit
